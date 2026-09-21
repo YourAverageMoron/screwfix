@@ -26,10 +26,11 @@ func main() {
 
 	msgId := *id
 	if msgId == "" {
-		msgId, err = client.GetEmailId(ctx, *from, *subject)
+		ids, err := client.GetEmailIds(ctx, &gmail.GetEmailIdOpts{From: *from, Subject: *subject})
 		if err != nil {
 			log.Fatal(err)
 		}
+		msgId = ids[0]
 	}
 
 	f, err := os.CreateTemp("", "gmail-pdf-*.html")

@@ -28,7 +28,7 @@ import (
 
 type Gmail interface {
 	ReadToHtmlFile(ctx context.Context, id string, outputFile *os.File) error
-	GetEmailId(ctx context.Context, from string, subject string) (string, error)
+	GetEmailIds(ctx context.Context, opts *GetEmailIdOpts) ([]string, error)
 	SendFile(ctx context.Context, emailAddress, subject, body string, file *os.File) error
 }
 
@@ -50,25 +50,46 @@ func NewClient(ctx context.Context) (*Client, error) {
 	return &Client{svc: svc}, nil
 }
 
-func (c *Client) GetEmailId(ctx context.Context, from, subject string) (string, error) {
-	var q []string
-	if from != "" {
-		q = append(q, "from:"+from)
+type GetEmailIdOpts struct {
+	From    string
+	Subject string
+	Before  time.Time
+	After   time.Time
+}
+
+func (c *Client) GetEmailIds(ctx context.Context, opts *GetEmailIdOpts) ([]string, error) {
+	if opts == nil {
+		opts = &GetEmailIdOpts{}
 	}
-	if subject != "" {
-		q = append(q, `subject:"`+subject+`"`)
+	var q []string
+	if opts.From != "" {
+		q = append(q, "from:"+opts.From)
+	}
+	if opts.Subject != "" {
+		q = append(q, `subject:"`+opts.Subject+`"`)
+	}
+	// Gmail only supports date granularity; switch to an internal timestamp filter if time-of-day precision needed
+	if !opts.After.IsZero() {
+		q = append(q, "after:"+opts.After.Format("2006/01/02"))
+	}
+	if !opts.Before.IsZero() {
+		q = append(q, "before:"+opts.Before.Format("2006/01/02"))
 	}
 	if len(q) == 0 {
 		q = append(q, "in:inbox")
 	}
-	list, err := c.svc.Users.Messages.List("me").Q(strings.Join(q, " ")).MaxResults(1).Do()
+	list, err := c.svc.Users.Messages.List("me").Q(strings.Join(q, " ")).Do()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	if len(list.Messages) == 0 {
-		return "", fmt.Errorf("no message matching: %s", strings.Join(q, " "))
+		return nil, fmt.Errorf("no message matching: %s", strings.Join(q, " "))
 	}
-	return list.Messages[0].Id, nil
+	ids := make([]string, len(list.Messages))
+	for i, m := range list.Messages {
+		ids[i] = m.Id
+	}
+	return ids, nil
 }
 
 func (c *Client) ReadToHtmlFile(ctx context.Context, id string, outputFile *os.File) error {
