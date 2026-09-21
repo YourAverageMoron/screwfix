@@ -29,7 +29,7 @@ import (
 type Gmail interface {
 	ReadToHtmlFile(ctx context.Context, id string, outputFile *os.File) error
 	GetEmailIds(ctx context.Context, opts *GetEmailIdOpts) ([]string, error)
-	SendFile(ctx context.Context, emailAddress, subject, body string, file *os.File) error
+	SendFile(ctx context.Context, opts *SendOpts, file *os.File) error
 }
 
 type Client struct {
@@ -107,26 +107,33 @@ func (c *Client) ReadToHtmlFile(ctx context.Context, id string, outputFile *os.F
 	return err
 }
 
-func (c *Client) SendFile(ctx context.Context, emailAddress, subject, body string, file *os.File) error {
+type SendOpts struct {
+	From    string
+	To      string
+	Subject string
+	Body    string
+}
+
+func (c *Client) SendFile(ctx context.Context, opts *SendOpts, file *os.File) error {
 	attachment, err := io.ReadAll(file)
 	if err != nil {
 		return fmt.Errorf("read attachment: %w", err)
 	}
-	_, err = c.svc.Users.Messages.Send("me", &gmailapi.Message{
-		Raw: base64.RawURLEncoding.EncodeToString([]byte(buildMime(emailAddress, subject, body, filepath.Base(file.Name()), attachment))),
+	_, err = c.svc.Users.Messages.Send("ryannffc21@gmail.com", &gmailapi.Message{
+		Raw: base64.RawURLEncoding.EncodeToString([]byte(buildMime(opts.From, opts.To, opts.Subject, opts.Body, filepath.Base(file.Name()), attachment))),
 	}).Context(ctx).Do()
 	return err
 }
 
 // ponytail: fixed boundary — fine unless body/attachment can contain "sfx-attach"; then use mime/multipart.Writer
-func buildMime(to, subject, body, filename string, attachment []byte) string {
+func buildMime(from, to, subject, body, filename string, attachment []byte) string {
 	const bnd = "sfx-attach"
 	mimeType := mime.TypeByExtension(filepath.Ext(filename))
 	if mimeType == "" {
 		mimeType = "application/octet-stream"
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "To: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=%s\r\n\r\n", to, subject, bnd)
+	fmt.Fprintf(&b, "From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=%s\r\n\r\n", from, to, subject, bnd)
 	fmt.Fprintf(&b, "--%s\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n%s\r\n\r\n", bnd, body)
 	fmt.Fprintf(&b, "--%s\r\nContent-Type: %s; name=%q\r\nContent-Disposition: attachment; filename=%q\r\nContent-Transfer-Encoding: base64\r\n\r\n", bnd, mimeType, filename, filename)
 	enc := base64.StdEncoding.EncodeToString(attachment)

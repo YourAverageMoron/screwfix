@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/YourAverageMoron/screwfix/internal/gmail"
 	"github.com/YourAverageMoron/screwfix/internal/pdf"
@@ -14,6 +15,8 @@ import (
 func main() {
 	subject := flag.String("subject", "", "email subject to search for")
 	from := flag.String("from", "", "sender email to search for")
+	before := flag.String("before", "", "only emails before this date (YYYY-MM-DD)")
+	after := flag.String("after", "", "only emails after this date (YYYY-MM-DD)")
 	out := flag.String("out", "email-example.pdf", "output PDF path")
 	id := flag.String("id", "", "id of message")
 	flag.Parse()
@@ -26,7 +29,22 @@ func main() {
 
 	msgId := *id
 	if msgId == "" {
-		ids, err := client.GetEmailIds(ctx, &gmail.GetEmailIdOpts{From: *from, Subject: *subject})
+		opts := &gmail.GetEmailIdOpts{From: *from, Subject: *subject}
+		if *before != "" {
+			t, err := time.Parse("2006-01-02", *before)
+			if err != nil {
+				log.Fatalf("bad -before date %q: %v", *before, err)
+			}
+			opts.Before = t
+		}
+		if *after != "" {
+			t, err := time.Parse("2006-01-02", *after)
+			if err != nil {
+				log.Fatalf("bad -after date %q: %v", *after, err)
+			}
+			opts.After = t
+		}
+		ids, err := client.GetEmailIds(ctx, opts)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -57,7 +75,12 @@ func main() {
         log.Fatal(err)
     }
 
-    err = client.SendFile(ctx, "ryanNFFC21_7219Zm@kindle.com", "example", "example body", pfdF)
+    err = client.SendFile(ctx, &gmail.SendOpts{
+        From:    "ryannffc21@gmail.com",
+        To:      "youraveragemoron@kindle.com",
+        Subject: "example",
+        Body:    "",
+    }, pfdF)
     if err != nil {
         log.Fatal(err)
     }
