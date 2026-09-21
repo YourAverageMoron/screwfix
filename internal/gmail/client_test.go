@@ -1,18 +1,18 @@
-package main
+package gmail
 
 import (
 	"encoding/base64"
 	"strings"
 	"testing"
 
-	"google.golang.org/api/gmail/v1"
+	gmailapi "google.golang.org/api/gmail/v1"
 )
 
 func TestFindPartNested(t *testing.T) {
-	root := &gmail.MessagePart{MimeType: "multipart/alternative", Parts: []*gmail.MessagePart{
-		{MimeType: "text/plain", Body: &gmail.MessagePartBody{Data: "eA"}},
-		{MimeType: "multipart/related", Parts: []*gmail.MessagePart{
-			{MimeType: "text/html", Body: &gmail.MessagePartBody{Data: "aGk="}},
+	root := &gmailapi.MessagePart{MimeType: "multipart/alternative", Parts: []*gmailapi.MessagePart{
+		{MimeType: "text/plain", Body: &gmailapi.MessagePartBody{Data: "eA"}},
+		{MimeType: "multipart/related", Parts: []*gmailapi.MessagePart{
+			{MimeType: "text/html", Body: &gmailapi.MessagePartBody{Data: "aGk="}},
 		}},
 	}}
 	p := findPart(root, "text/html")
@@ -41,9 +41,9 @@ func TestDecodeB64url(t *testing.T) {
 }
 
 func TestMessageHTMLPlainFallback(t *testing.T) {
-	m := &gmail.Message{Payload: &gmail.MessagePart{
+	m := &gmailapi.Message{Payload: &gmailapi.MessagePart{
 		MimeType: "text/plain",
-		Body:     &gmail.MessagePartBody{Data: base64.RawURLEncoding.EncodeToString([]byte("a<b"))},
+		Body:     &gmailapi.MessagePartBody{Data: base64.RawURLEncoding.EncodeToString([]byte("a<b"))},
 	}}
 	s, err := messageHTML(m)
 	if err != nil || !strings.Contains(s, "a&lt;b") {
