@@ -27,9 +27,9 @@ import (
 )
 
 type Gmail interface {
-	ReadToHtmlFile(ctx context.Context, id string, outputFile *os.File) error
+	GetMessage(ctx context.Context, id string) (*Message, error)
 	GetEmailIds(ctx context.Context, opts *GetEmailIdOpts) ([]string, error)
-	SendFile(ctx context.Context, opts *SendOpts, file *os.File) error
+	SendFile(ctx context.Context, r io.Reader, attachmentName string, opts *SendOpts) error
 }
 
 type Client struct {
@@ -80,7 +80,7 @@ func (c *Client) GetEmailIds(ctx context.Context, opts *GetEmailIdOpts) ([]strin
 	}
 	list, err := c.svc.Users.Messages.List("me").Q(strings.Join(q, " ")).Do()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to list messages: %w", err)
 	}
 	if len(list.Messages) == 0 {
 		return nil, fmt.Errorf("no message matching: %s", strings.Join(q, " "))
@@ -92,19 +92,12 @@ func (c *Client) GetEmailIds(ctx context.Context, opts *GetEmailIdOpts) ([]strin
 	return ids, nil
 }
 
-func (c *Client) ReadToHtmlFile(ctx context.Context, id string, outputFile *os.File) error {
+func (c *Client) GetMessage(ctx context.Context, id string) (*Message, error) {
 	msg, err := c.svc.Users.Messages.Get("me", id).Format("full").Do()
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("failed to get msg: %w", err)
 	}
-	fmt.Printf("Found: %q from %s (%s)\n", header(msg, "Subject"), header(msg, "From"), header(msg, "Date"))
-
-	body, err := messageHTML(msg)
-	if err != nil {
-		return err
-	}
-	_, err = outputFile.WriteString(body)
-	return err
+	return &Message{msg: msg}, nil
 }
 
 type SendOpts struct {
@@ -114,13 +107,13 @@ type SendOpts struct {
 	Body    string
 }
 
-func (c *Client) SendFile(ctx context.Context, opts *SendOpts, file *os.File) error {
-	attachment, err := io.ReadAll(file)
+func (c *Client) SendFile(ctx context.Context, r io.Reader, attachmentName string, opts *SendOpts) error {
+	attachment, err := io.ReadAll(r)
 	if err != nil {
 		return fmt.Errorf("read attachment: %w", err)
 	}
-	_, err = c.svc.Users.Messages.Send("ryannffc21@gmail.com", &gmailapi.Message{
-		Raw: base64.RawURLEncoding.EncodeToString([]byte(buildMime(opts.From, opts.To, opts.Subject, opts.Body, filepath.Base(file.Name()), attachment))),
+	_, err = c.svc.Users.Messages.Send(opts.From, &gmailapi.Message{
+		Raw: base64.RawURLEncoding.EncodeToString([]byte(buildMime(opts.From, opts.To, opts.Subject, opts.Body, attachmentName, attachment))),
 	}).Context(ctx).Do()
 	return err
 }

@@ -2,87 +2,84 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
-	"os"
 	"time"
 
-	"github.com/YourAverageMoron/screwfix/internal/gmail"
-	"github.com/YourAverageMoron/screwfix/internal/pdf"
+	"github.com/YourAverageMoron/screwfix/internal/kpop"
+	"github.com/spf13/viper"
 )
 
-func main() {
+type Config struct {
+	KindleEmail string `mapstructure:"kindle_email"`
+	GmailEmail  string `mapstructure:"gmail_email"`
+}
+
+func loadConfig(c any) error {
+	v := viper.New()
+	v.SetConfigName("kpop")
+	v.SetConfigType("yaml")
+	v.AddConfigPath(".")
+	v.AddConfigPath("$HOME/.config/screwfix")
+	v.SetEnvPrefix("KPOP")
+	v.AutomaticEnv()
+	if err := v.ReadInConfig(); err != nil {
+		var notFound viper.ConfigFileNotFoundError
+		if !errors.As(err, &notFound) {
+			return fmt.Errorf("read kpop config: %w", err)
+		}
+	}
+	if err := v.Unmarshal(&c); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func parseFlags() (kpop.Args, error) {
 	subject := flag.String("subject", "", "email subject to search for")
 	from := flag.String("from", "", "sender email to search for")
 	before := flag.String("before", "", "only emails before this date (YYYY-MM-DD)")
 	after := flag.String("after", "", "only emails after this date (YYYY-MM-DD)")
-	out := flag.String("out", "email-example.pdf", "output PDF path")
-	id := flag.String("id", "", "id of message")
 	flag.Parse()
-
-	ctx := context.Background()
-	client, err := gmail.NewClient(ctx)
-	if err != nil {
-		log.Fatal(err)
+	a := kpop.Args{
+		Subject: *subject,
+		From:    *from,
 	}
-
-	msgId := *id
-	if msgId == "" {
-		opts := &gmail.GetEmailIdOpts{From: *from, Subject: *subject}
-		if *before != "" {
-			t, err := time.Parse("2006-01-02", *before)
-			if err != nil {
-				log.Fatalf("bad -before date %q: %v", *before, err)
-			}
-			opts.Before = t
-		}
-		if *after != "" {
-			t, err := time.Parse("2006-01-02", *after)
-			if err != nil {
-				log.Fatalf("bad -after date %q: %v", *after, err)
-			}
-			opts.After = t
-		}
-		ids, err := client.GetEmailIds(ctx, opts)
+	if *before != "" {
+		parsedB, err := time.Parse("2006-01-02", *before)
 		if err != nil {
-			log.Fatal(err)
+			return kpop.Args{}, fmt.Errorf("bad -before date %q: %v", *before, err)
 		}
-		msgId = ids[0]
+		a.Before = parsedB
 	}
+	if *after != "" {
+		parsedA, err := time.Parse("2006-01-02", *after)
+		if err != nil {
+			return kpop.Args{}, fmt.Errorf("bad -before date %q: %v", *before, err)
+		}
+		a.After = parsedA
+	}
+	return a, nil
+}
 
-	f, err := os.CreateTemp("", "gmail-pdf-*.html")
+func main() {
+	ctx := context.Background()
+	cfg := &kpop.Config{}
+	err := loadConfig(cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
-	htmlPath := f.Name()
-	defer os.Remove(htmlPath)
-	if err := client.ReadToHtmlFile(ctx, msgId, f); err != nil {
-		f.Close()
+	app := kpop.NewApp(*cfg)
+	args, err := parseFlags()
+	if err != nil {
 		log.Fatal(err)
 	}
-	if err := f.Close(); err != nil {
+	res, err := app.SendEmailsToKindle(ctx, args)
+	if err != nil {
 		log.Fatal(err)
 	}
-
-	if err := pdf.RenderFromHtml(htmlPath, *out); err != nil {
-		log.Fatal(err)
-	}
-	fmt.Printf("Wrote %s\n", *out)
-
-    pfdF, err := os.Open(*out)
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    err = client.SendFile(ctx, &gmail.SendOpts{
-        From:    "ryannffc21@gmail.com",
-        To:      "youraveragemoron@kindle.com",
-        Subject: "example",
-        Body:    "",
-    }, pfdF)
-    if err != nil {
-        log.Fatal(err)
-    }
-	fmt.Printf("Sent Email %s\n", *out)
+	fmt.Println(res)
 }

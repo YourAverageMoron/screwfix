@@ -1,6 +1,7 @@
 package gmail
 
 import (
+	"bytes"
 	"encoding/base64"
 	"strings"
 	"testing"
@@ -48,5 +49,19 @@ func TestMessageHTMLPlainFallback(t *testing.T) {
 	s, err := messageHTML(m)
 	if err != nil || !strings.Contains(s, "a&lt;b") {
 		t.Fatalf("got %q err %v", s, err)
+	}
+}
+
+func TestBuildMimeAttachmentRoundtrip(t *testing.T) {
+	att := []byte("%PDF-1.4 \xff\xfe\x00 binary \n payload")
+	msg := buildMime("a@x.com", "b@y.com", "s", "body", "file.pdf", att)
+	b64 := msg[strings.LastIndex(msg, "base64\r\n\r\n")+len("base64\r\n\r\n"):]
+	b64 = b64[:strings.Index(b64, "\r\n--")]
+	got, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(b64, "\r\n", ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, att) {
+		t.Fatalf("attachment corrupted: %d bytes in, %d out", len(att), len(got))
 	}
 }

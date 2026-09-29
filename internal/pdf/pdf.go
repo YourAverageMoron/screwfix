@@ -2,14 +2,13 @@ package pdf
 
 import (
 	"context"
-	"os"
 	"time"
 
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
 )
 
-func RenderFromHtml(htmlPath, outPath string) error {
+func RenderFromHtml(htmlPath string) ([]byte, error) {
 	ctx, cancel := chromedp.NewContext(context.Background())
 	defer cancel()
 	ctx, cancel = context.WithTimeout(ctx, 2*time.Minute)
@@ -27,9 +26,9 @@ func RenderFromHtml(htmlPath, outPath string) error {
 			return err
 		}),
 	); err != nil {
-		return err
+		return nil, err
 	}
-	return os.WriteFile(outPath, buf, 0o644)
+	return buf, nil
 }
 
 var waitImages = chromedp.ActionFunc(func(ctx context.Context) error {
