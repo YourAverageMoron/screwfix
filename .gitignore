@@ -7,6 +7,9 @@
 *.dll
 *.so
 *.dylib
+**/credentials.json
+**/token.json
+kpop.yaml
 
 # Test binary, built with `go test -c`
 *.test
